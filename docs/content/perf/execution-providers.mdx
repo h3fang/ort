@@ -34,7 +34,8 @@ In order to configure sessions to use certain execution providers, you must **re
 use ort::{ep::CUDA, session::Session};
 
 fn main() -> anyhow::Result<()> {
-    let session = Session::builder()?
+    let env = ort::Environment::builder().build()?;
+    let session = Session::builder(&env)?
         .with_execution_providers([CUDA::default().build()])?
         .commit_from_file("model.onnx")?;
 
@@ -48,7 +49,8 @@ You can, of course, specify multiple execution providers. <Ort/> will register a
 use ort::{ep, session::Session};
 
 fn main() -> anyhow::Result<()> {
-    let session = Session::builder()?
+    let env = ort::Environment::builder().build()?;
+    let session = Session::builder(&env)?
         .with_execution_providers([
             // Prefer TensorRT over CUDA.
             ep::TensorRT::default().build(),
@@ -71,7 +73,8 @@ EPs have configuration options to control behavior or increase performance. Each
 use ort::{ep, session::Session};
 
 fn main() -> anyhow::Result<()> {
-    let session = Session::builder()?
+    let env = ort::Environment::builder().build()?;
+    let session = Session::builder(&env)?
         .with_execution_providers([
             ep::CoreML::default()
                 // this model uses control flow operators, so enable CoreML on subgraphs too
@@ -93,7 +96,8 @@ You can configure an EP to return an error on failure by adding [`.error_on_fail
 use ort::{ep, session::Session};
 
 fn main() -> anyhow::Result<()> {
-    let session = Session::builder()?
+    let env = ort::Environment::builder().build()?;
+    let session = Session::builder(&env)?
         .with_execution_providers([
             ep::CUDA::default().build().error_on_failure()
         ])?
@@ -112,7 +116,8 @@ use ort::{
 };
 
 fn main() -> anyhow::Result<()> {
-    let builder = Session::builder()?;
+    let env = ort::Environment::builder().build()?;
+    let builder = Session::builder(&env)?;
 
     let cuda = ep::CUDA::default();
     if cuda.register(&builder).is_err() {
@@ -135,7 +140,8 @@ use ort::{
 };
 
 fn main() -> anyhow::Result<()> {
-    let builder = Session::builder()?;
+    let env = ort::Environment::builder().build()?;
+    let builder = Session::builder(&env)?;
 
     let coreml = ep::CoreML::default();
     if !coreml.is_available() {
@@ -163,7 +169,10 @@ fn main() -> anyhow::Result<()> {
         .with_execution_providers([ep::CUDA::default().build()])
         .commit();
 
-    let session = Session::builder()?.commit_from_file("model.onnx")?;
+
+    let env = ort::Environment::builder().build()?;
+
+    let session = Session::builder(&env)?.commit_from_file("model.onnx")?;
     // The session will attempt to register the CUDA EP
     // since we configured environment EPs.
 

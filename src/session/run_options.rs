@@ -24,9 +24,10 @@ use crate::{
 ///
 /// ```
 /// # use std::sync::Arc;
-/// # use ort::{session::{Session, RunOptions, OutputSelector}, memory::Allocator, value::Tensor};
+/// # use ort::{environment::Environment, session::{Session, RunOptions, OutputSelector}, memory::Allocator, value::Tensor};
 /// # fn main() -> ort::Result<()> {
-/// let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+/// # let env = Environment::builder().build()?;
+/// let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 /// let input = Tensor::<f32>::new(&Allocator::default(), [1_usize, 64, 64, 3])?;
 ///
 /// let output0 = session.outputs()[0].name();
@@ -103,9 +104,10 @@ impl OutputSelector {
 	///
 	/// ```
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{Session, RunOptions, OutputSelector}, memory::Allocator, value::Tensor};
+	/// # use ort::{environment::Environment, session::{Session, RunOptions, OutputSelector}, memory::Allocator, value::Tensor};
 	/// # fn main() -> ort::Result<()> {
-	/// let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let input = Tensor::<f32>::new(&Allocator::default(), [1_usize, 64, 64, 3])?;
 	///
 	/// let output0 = session.outputs()[0].name();
@@ -230,9 +232,10 @@ impl<O: SelectedOutputMarker> RunOptions<O> {
 	///
 	/// ```
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{Session, RunOptions, OutputSelector}, memory::Allocator, value::Tensor};
+	/// # use ort::{environment::Environment, session::{Session, RunOptions, OutputSelector}, memory::Allocator, value::Tensor};
 	/// # fn main() -> ort::Result<()> {
-	/// let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let input = Tensor::<f32>::new(&Allocator::default(), [1_usize, 64, 64, 3])?;
 	///
 	/// let output0 = session.outputs()[0].name();
@@ -285,9 +288,10 @@ impl<O: SelectedOutputMarker> RunOptions<O> {
 	/// ```no_run
 	/// # // no_run because upsample.onnx is too simple of a model for the termination signal to be reliable enough
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{Session, RunOptions, OutputSelector}, value::Value};
+	/// # use ort::{environment::Environment, session::{Session, RunOptions, OutputSelector}, value::Value};
 	/// # fn main() -> ort::Result<()> {
-	/// # 	let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # 	let env = Environment::builder().build()?;
+	/// # 	let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// # 	let input = Value::from_array(ndarray::Array4::<f32>::zeros((1, 64, 64, 3)))?;
 	/// let run_options = Arc::new(RunOptions::new()?);
 	///
@@ -313,9 +317,10 @@ impl<O: SelectedOutputMarker> RunOptions<O> {
 	///
 	/// ```no_run
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{Session, RunOptions, OutputSelector}, value::Value};
+	/// # use ort::{environment::Environment, session::{Session, RunOptions, OutputSelector}, value::Value};
 	/// # fn main() -> ort::Result<()> {
-	/// # 	let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # 	let env = Environment::builder().build()?;
+	/// # 	let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// # 	let input = Value::from_array(ndarray::Array4::<f32>::zeros((1, 64, 64, 3)))?;
 	/// let run_options = Arc::new(RunOptions::new()?);
 	///

@@ -79,10 +79,12 @@ let action: Tensor<f32> = outputs.remove("action").unwrap().downcast()?;
 Here is a more complete example of the I/O binding API in a scenario where I/O performance can be improved significantly. This example features a typical text-to-image diffusion pipeline, using a text encoder like CLIP to create the condition tensor and a UNet for diffusion.
 
 ```rs
-let mut text_encoder = Session::builder()?
+let env = ort::Environment::builder().build()?;
+
+let mut text_encoder = Session::builder(&env)?
 	.with_execution_providers([ep::CUDA::default().build()])?
 	.commit_from_file("text_encoder.onnx")?;
-let mut unet = Session::builder()?
+let mut unet = Session::builder(&env)?
 	.with_execution_providers([ep::CUDA::default().build()])?
 	.commit_from_file("unet.onnx")?;
 

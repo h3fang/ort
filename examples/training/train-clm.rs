@@ -32,13 +32,13 @@ fn main() -> ort::Result<()> {
 		.init();
 
 	// Register EPs based on feature flags - this isn't crucial for usage and can be removed.
-	common::init()?;
+	let env = common::init()?;
 
 	kdam::term::init(true);
 	let _ = kdam::term::hide_cursor();
 
 	let trainer = Trainer::new(
-		SessionBuilder::new()?.with_execution_providers([ep::CUDA::default().build()])?,
+		SessionBuilder::new(&env)?.with_execution_providers([ep::CUDA::default().build()])?,
 		Allocator::default(),
 		Checkpoint::load("tools/train-data/mini-clm/checkpoint")?,
 		"tools/train-data/mini-clm/training_model.onnx",
@@ -115,7 +115,7 @@ fn main() -> ort::Result<()> {
 
 	trainer.export("trained-clm.onnx", ["probs"])?;
 
-	let mut session = Session::builder()?.commit_from_file("trained-clm.onnx")?;
+	let mut session = Session::builder(&env)?.commit_from_file("trained-clm.onnx")?;
 
 	let mut stdout = std::io::stdout();
 

@@ -6,7 +6,8 @@
 //! use ort::{ep, session::Session};
 //!
 //! fn main() -> ort::Result<()> {
-//! 	let session = Session::builder()?
+//! 	let env = ort::Environment::builder().build()?;
+//! 	let session = Session::builder(&env)?
 //! 		.with_execution_providers([ep::CUDA::default().build()])?
 //! 		.commit_from_file("model.onnx")?;
 //!

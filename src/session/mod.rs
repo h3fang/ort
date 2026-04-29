@@ -1,9 +1,10 @@
 //! Contains [`Session`], the main interface used to inference ONNX models.
 //!
 //! ```
-//! # use ort::{session::Session, value::TensorRef};
+//! # use ort::{environment::Environment, session::Session, value::TensorRef};
 //! # fn main() -> ort::Result<()> {
-//! let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+//! # let env = Environment::builder().build()?;
+//! let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 //! let input = ndarray::Array4::<f32>::zeros((1, 64, 64, 3));
 //! let outputs = session.run(ort::inputs![TensorRef::from_array_view(&input)?])?;
 //! # 	Ok(())
@@ -102,9 +103,10 @@ impl Drop for SharedSessionInner {
 /// An ONNX Runtime graph to be used for inference.
 ///
 /// ```
-/// # use ort::{session::Session, value::TensorRef};
+/// # use ort::{environment::Environment, session::Session, value::TensorRef};
 /// # fn main() -> ort::Result<()> {
-/// let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+/// # let env = Environment::builder().build()?;
+/// let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 /// let input = ndarray::Array4::<f32>::zeros((1, 64, 64, 3));
 /// let outputs = session.run(ort::inputs![TensorRef::from_array_view(&input)?])?;
 /// # 	Ok(())
@@ -147,9 +149,20 @@ impl Session {
 		&self.outputs
 	}
 
-	/// Creates a new [`SessionBuilder`].
-	pub fn builder() -> Result<SessionBuilder> {
-		SessionBuilder::new()
+	/// Creates a new [`SessionBuilder`] using the given [`Environment`].
+	///
+	/// ```
+	/// # use ort::{environment::Environment, session::{builder::GraphOptimizationLevel, Session}, value::TensorRef};
+	/// # fn main() -> ort::Result<()> {
+	/// let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
+	/// let input = ndarray::Array4::<f32>::zeros((1, 64, 64, 3));
+	/// let outputs = session.run(ort::inputs![TensorRef::from_array_view(&input)?])?;
+	/// # 	Ok(())
+	/// # }
+	/// ```
+	pub fn builder(environment: &Arc<Environment>) -> Result<SessionBuilder> {
+		SessionBuilder::new(Arc::clone(environment))
 	}
 
 	/// Returns this session's [`Allocator`].
@@ -173,9 +186,10 @@ impl Session {
 	///
 	/// ```
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{RunOptions, Session}, value::{Value, ValueType, TensorRef, TensorElementType}};
+	/// # use ort::{environment::Environment, session::{RunOptions, Session}, value::{Value, ValueType, TensorRef, TensorElementType}};
 	/// # fn main() -> ort::Result<()> {
-	/// let session = Session::builder()?.commit_from_file("tests/data/overridable_initializer.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// let session = Session::builder(&env)?.commit_from_file("tests/data/overridable_initializer.onnx")?;
 	///
 	/// let mut overridable_initializers = session.overridable_initializers();
 	/// assert_eq!(overridable_initializers.len(), 1);
@@ -214,9 +228,10 @@ impl Session {
 	///
 	/// ```
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{RunOptions, Session}, value::{Value, ValueType, TensorRef, TensorElementType}};
+	/// # use ort::{environment::Environment, session::{RunOptions, Session}, value::{Value, ValueType, TensorRef, TensorElementType}};
 	/// # fn main() -> ort::Result<()> {
-	/// let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let input = ndarray::Array4::<f32>::zeros((1, 64, 64, 3));
 	/// let outputs = session.run(ort::inputs![TensorRef::from_array_view(&input)?])?;
 	/// # 	Ok(())
@@ -243,9 +258,10 @@ impl Session {
 	/// ```no_run
 	/// # // no_run because upsample.onnx is too simple of a model for the termination signal to be reliable enough
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{Session, RunOptions}, value::{Value, ValueType, TensorRef, TensorElementType}};
+	/// # use ort::{environment::Environment, session::{Session, RunOptions}, value::{Value, ValueType, TensorRef, TensorElementType}};
 	/// # fn main() -> ort::Result<()> {
-	/// # 	let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// # 	let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// # 	let input = Value::from_array(ndarray::Array4::<f32>::zeros((1, 64, 64, 3)))?;
 	/// let run_options = Arc::new(RunOptions::new()?);
 	///
@@ -407,9 +423,10 @@ impl Session {
 	///
 	/// ```
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{Session, RunOptions}, value::{Value, ValueType, TensorRef, TensorElementType}};
+	/// # use ort::{environment::Environment, session::{Session, RunOptions}, value::{Value, ValueType, TensorRef, TensorElementType}};
 	/// # fn main() -> ort::Result<()> { tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
-	/// let mut session = Session::builder()?.with_intra_threads(2)?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?.with_intra_threads(2)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let input = ndarray::Array4::<f32>::zeros((1, 64, 64, 3));
 	/// let options = RunOptions::new()?;
 	/// let outputs = session.run_async(ort::inputs![TensorRef::from_array_view(&input)?], &options)?.await?;
@@ -523,9 +540,10 @@ impl Session {
 	///
 	/// ```
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{Session, RunOptions}, value::{Value, ValueType, TensorRef, TensorElementType}};
+	/// # use ort::{environment::Environment, session::{Session, RunOptions}, value::{Value, ValueType, TensorRef, TensorElementType}};
 	/// # fn main() -> ort::Result<()> { tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
-	/// let mut session = Session::builder()?.with_intra_threads(2)?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?.with_intra_threads(2)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let input = ndarray::Array4::<f32>::zeros((1, 64, 64, 3));
 	/// let options = RunOptions::new()?;
 	/// let outputs = session.run_async(ort::inputs![TensorRef::from_array_view(&input)?], &options)?.await?;
@@ -636,9 +654,10 @@ impl Session {
 	///
 	/// ```
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{RunOptions, Session, WorkloadType}, value::{Value, ValueType, TensorRef, TensorElementType}};
+	/// # use ort::{environment::Environment, session::{RunOptions, Session, WorkloadType}, value::{Value, ValueType, TensorRef, TensorElementType}};
 	/// # fn main() -> ort::Result<()> {
-	/// let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// session.set_workload_type(WorkloadType::Efficient)?;
 	///
 	/// let input = ndarray::Array4::<f32>::zeros((1, 64, 64, 3));
@@ -668,9 +687,10 @@ impl Session {
 	///
 	/// ```
 	/// # use std::sync::Arc;
-	/// # use ort::{session::{RunOptions, Session}, value::{Value, ValueType, TensorRef, TensorElementType}};
+	/// # use ort::{environment::Environment, session::{RunOptions, Session}, value::{Value, ValueType, TensorRef, TensorElementType}};
 	/// # fn main() -> ort::Result<()> {
-	/// let session = Session::builder()?.commit_from_file("tests/data/lora_model.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// let session = Session::builder(&env)?.commit_from_file("tests/data/lora_model.onnx")?;
 	/// assert_eq!(session.opset_for_domain(ort::editor::ONNX_DOMAIN), Some(21));
 	/// # 	Ok(())
 	/// # }

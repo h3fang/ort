@@ -68,7 +68,7 @@ mod tests {
 
 	#[test]
 	fn test_device_meta() -> Result<()> {
-		let env = crate::environment::current()?;
+		let env = crate::Environment::builder().build()?;
 		// CPUExecutionProvider should always be first (for now anyways...)
 		let device = env.devices().next().expect("");
 		assert!(matches!(device.ep(), Ok("CPUExecutionProvider")));
@@ -80,9 +80,9 @@ mod tests {
 
 	#[test]
 	fn test_session_devices() -> Result<()> {
-		let env = crate::environment::current()?;
+		let env = crate::Environment::builder().build()?;
 
-		let _session1 = Session::builder()?
+		let _session1 = Session::builder(&env)?
 			.with_devices(env.devices().next(), None)?
 			.commit_from_file("tests/data/upsample.onnx")?;
 
@@ -90,7 +90,7 @@ mod tests {
 			("CPUExecutionProvider.use_arena".to_string(), "1".to_string()),
 			("XnnpackExecutionProvider.num_threads".to_string(), "4".to_string()),
 		];
-		let _session2 = Session::builder()?
+		let _session2 = Session::builder(&env)?
 			.with_devices(env.devices().next(), Some(&options))?
 			.commit_from_file("tests/data/upsample.onnx")?;
 

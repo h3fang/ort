@@ -11,14 +11,7 @@ use core::{
 use smallvec::SmallVec;
 
 use crate::{
-	AsPointer, Error,
-	environment::{self, Environment},
-	error::Result,
-	logging::LoggerFunction,
-	memory::MemoryInfo,
-	operator::OperatorDomain,
-	ortsys,
-	util::with_cstr,
+	AsPointer, Error, environment::Environment, error::Result, logging::LoggerFunction, memory::MemoryInfo, operator::OperatorDomain, ortsys, util::with_cstr,
 	value::DynValue
 };
 
@@ -38,9 +31,10 @@ pub use self::impl_options::*;
 ///
 /// This type supports [error recovery](Error::recover):
 /// ```
-/// # use ort::session::{builder::GraphOptimizationLevel, Session};
+/// # use ort::{environment::Environment, session::{builder::GraphOptimizationLevel, Session}};
 /// # fn main() -> ort::Result<()> {
-/// let session = Session::builder()?
+/// # let env = Environment::builder().build()?;
+/// let session = Session::builder(&env)?
 /// 	.with_optimization_level(GraphOptimizationLevel::All)
 /// 	// Optimization isn't enabled in minimal builds of ONNX Runtime, so throws an error. We can just ignore it.
 /// 	.unwrap_or_else(|e| e.recover())
@@ -57,9 +51,10 @@ pub type BuilderResult = Result<SessionBuilder, Error<SessionBuilder>>;
 /// the builder configuration into a [`Session`].
 ///
 /// ```
-/// # use ort::session::{builder::GraphOptimizationLevel, Session};
+/// # use ort::{environment::Environment, session::{builder::GraphOptimizationLevel, Session}};
 /// # fn main() -> ort::Result<()> {
-/// let session = Session::builder()?
+/// # let env = Environment::builder().build()?;
+/// let session = Session::builder(&env)?
 /// 	.with_optimization_level(GraphOptimizationLevel::Level1)?
 /// 	.with_intra_threads(1)?
 /// 	.commit_from_file("tests/data/upsample.onnx")?;
@@ -110,18 +105,17 @@ impl SessionBuilder {
 	/// Creates a new session builder.
 	///
 	/// ```
-	/// # use ort::session::{builder::GraphOptimizationLevel, Session};
+	/// # use ort::{environment::Environment, session::{builder::GraphOptimizationLevel, Session}};
 	/// # fn main() -> ort::Result<()> {
-	/// let session = Session::builder()?
+	/// let env = Environment::builder().build()?;
+	/// let session = Session::builder(&env)?
 	/// 	.with_optimization_level(GraphOptimizationLevel::Level1)?
 	/// 	.with_intra_threads(1)?
 	/// 	.commit_from_file("tests/data/upsample.onnx")?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn new() -> Result<Self> {
-		let environment = environment::current()?;
-
+	pub fn new(environment: Arc<Environment>) -> Result<Self> {
 		let mut session_options_ptr: *mut ort_sys::OrtSessionOptions = ptr::null_mut();
 		ortsys![unsafe CreateSessionOptions(&mut session_options_ptr)?; nonNull(session_options_ptr)];
 
@@ -159,10 +153,11 @@ impl SessionBuilder {
 	/// Creates a signaler that can be used from another thread to cancel any in-progress commits.
 	///
 	/// ```
-	/// # use ort::session::{builder::GraphOptimizationLevel, Session};
+	/// # use ort::{environment::Environment, session::{builder::GraphOptimizationLevel, Session}};
 	/// # use std::{thread, time::Duration};
 	/// # fn main() -> ort::Result<()> {
-	/// let mut builder = Session::builder()?
+	/// # let env = Environment::builder().build()?;
+	/// let mut builder = Session::builder(&env)?
 	/// 	.with_optimization_level(GraphOptimizationLevel::Level1)?
 	/// 	.with_intra_threads(1)?;
 	///
@@ -218,10 +213,11 @@ impl LoadCanceler {
 	/// Cancels any active session commits.
 	///
 	/// ```
-	/// # use ort::session::{builder::GraphOptimizationLevel, Session};
+	/// # use ort::{environment::Environment, session::{builder::GraphOptimizationLevel, Session}};
 	/// # use std::{thread, time::Duration};
 	/// # fn main() -> ort::Result<()> {
-	/// let mut builder = Session::builder()?
+	/// # let env = Environment::builder().build()?;
+	/// let mut builder = Session::builder(&env)?
 	/// 	.with_optimization_level(GraphOptimizationLevel::Level1)?
 	/// 	.with_intra_threads(1)?;
 	///
@@ -279,8 +275,9 @@ mod tests {
 
 	#[test]
 	fn test_session_builder_clone() -> crate::Result<()> {
+		let env = crate::environment::Environment::builder().build()?;
 		let was_called = Arc::new(AtomicBool::new(false));
-		let builder = SessionBuilder::new()?.with_logger(Arc::new({
+		let builder = SessionBuilder::new(env)?.with_logger(Arc::new({
 			let was_called = Arc::clone(&was_called);
 			move |_level: crate::logging::LogLevel, _category: &str, _id: &str, _code_location: &str, _message: &str| {
 				was_called.store(true, Ordering::Release);

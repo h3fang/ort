@@ -11,7 +11,7 @@ Rather than trying to link ONNX Runtime into your Rust application, `ort-web` in
 
 ## Supported APIs
 - ✅ `ort::init`
-- 🔷 `ort::environment::EnvironmentBuilder`
+- 🔷 `ort::EnvironmentBuilder`
     - `EnvironmentBuilder::with_telemetry` <sup>[*](#telemetry)</sup>
     - `EnvironmentBuilder::commit`
 - 🔷 `ort::memory::Allocator`
@@ -99,8 +99,9 @@ use wasm_bindgen::JsError;
 
 async fn init() -> Result<(), JsError> {
     ort::set_api(ort_web::api(FEATURE_WEBGPU).await?);
+    let env = ort::Environment::builder().build()?;
 
-    let mut session = Session::builder()?
+    let mut session = Session::builder(&env)?
         .with_execution_providers([
             // only available with FEATURE_WEBGPU
             ep::WebGPU::default().build()

@@ -87,9 +87,10 @@ impl<'v, const N: usize> From<[SessionInputValue<'v>; N]> for SessionInputs<'_, 
 /// ```no_run
 /// # use std::{error::Error, sync::Arc};
 /// # use ndarray::Array1;
-/// # use ort::{value::Tensor, session::{builder::GraphOptimizationLevel, Session}};
+/// # use ort::{environment::Environment, value::Tensor, session::{builder::GraphOptimizationLevel, Session}};
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// # 	let mut session = Session::builder()?.commit_from_file("model.onnx")?;
+/// # 	let env = Environment::builder().build()?;
+/// # 	let mut session = Session::builder(&env)?.commit_from_file("model.onnx")?;
 /// let _ = session.run(ort::inputs![Tensor::from_array(([5], vec![1, 2, 3, 4, 5]))?])?;
 /// # 	Ok(())
 /// # }
@@ -100,9 +101,10 @@ impl<'v, const N: usize> From<[SessionInputValue<'v>; N]> for SessionInputs<'_, 
 /// ```no_run
 /// # use std::{error::Error, sync::Arc};
 /// # use ndarray::Array1;
-/// # use ort::{value::Tensor, session::{builder::GraphOptimizationLevel, Session}};
+/// # use ort::{environment::Environment, value::Tensor, session::{builder::GraphOptimizationLevel, Session}};
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// # 	let mut session = Session::builder()?.commit_from_file("model.onnx")?;
+/// # 	let env = Environment::builder().build()?;
+/// # 	let mut session = Session::builder(&env)?.commit_from_file("model.onnx")?;
 /// let _ = session.run(ort::inputs! {
 /// 	"tokens" => Tensor::from_array(([5], vec![1, 2, 3, 4, 5]))?
 /// })?;
@@ -115,9 +117,10 @@ impl<'v, const N: usize> From<[SessionInputValue<'v>; N]> for SessionInputs<'_, 
 /// ```no_run
 /// # use std::{error::Error, sync::Arc};
 /// # use ndarray::Array1;
-/// # use ort::{value::Tensor, session::{builder::GraphOptimizationLevel, Session}};
+/// # use ort::{environment::Environment, value::Tensor, session::{builder::GraphOptimizationLevel, Session}};
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// # 	let mut session = Session::builder()?.commit_from_file("model.onnx")?;
+/// # 	let env = Environment::builder().build()?;
+/// # 	let mut session = Session::builder(&env)?.commit_from_file("model.onnx")?;
 /// # 	let model_layers = 12;
 /// 	let mut my_inputs = ort::inputs![
 /// 		"input_ids" => Tensor::from_array((vec![1, 1i64], vec![0]))?,

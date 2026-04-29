@@ -74,7 +74,7 @@ pub(crate) use self::logging::{debug, error, info, trace, warning as warn};
 pub(crate) mod test_util;
 use self::util::OnceLock;
 pub use self::{
-	environment::init,
+	environment::{Environment, init},
 	error::{Error, ErrorCode, Result}
 };
 

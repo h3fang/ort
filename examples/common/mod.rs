@@ -1,14 +1,16 @@
+use std::sync::Arc;
+
 #[allow(unused)]
 use ort::ep::*;
 
-pub fn init() -> ort::Result<()> {
+pub fn init() -> ort::Result<Arc<ort::Environment>> {
 	#[cfg(feature = "backend-candle")]
 	ort::set_api(ort_candle::api());
 	#[cfg(feature = "backend-tract")]
 	ort::set_api(ort_tract::api());
 
 	#[cfg(all(not(feature = "backend-candle"), not(feature = "backend-tract")))]
-	ort::init()
+	let env = ort::Environment::builder()
 		.with_execution_providers([
 			#[cfg(feature = "tensorrt")]
 			TensorRT::default().build(),
@@ -47,7 +49,10 @@ pub fn init() -> ort::Result<()> {
 			#[cfg(feature = "webgpu")]
 			WebGPU::default().build()
 		])
-		.commit();
+		.build()?;
 
-	Ok(())
+	#[cfg(any(feature = "backend-candle", feature = "backend-tract"))]
+	let env = ort::Environment::builder().build()?;
+
+	Ok(env)
 }

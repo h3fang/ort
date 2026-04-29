@@ -58,7 +58,9 @@ ort = { version = "2", features = [ "load-dynamic" ] }
             ort::init_from(dylib_path)?.commit();
 
             // Now we can use `ort`!
-            let mut session = Session::builder()?
+
+            let env = ort::Environment::builder().build()?;
+            let mut session = Session::builder(&env)?
                 .commit_from_file("model.onnx")?;
 
             Ok(())

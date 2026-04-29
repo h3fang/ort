@@ -13,8 +13,9 @@ fn mnist_5() -> ort::Result<()> {
 	const IMAGE_TO_LOAD: &str = "mnist_5.jpg";
 
 	ort::set_api(ort_tract::api());
+	let env = ort::Environment::builder().build()?;
 
-	let mut session = Session::builder()?
+	let mut session = Session::builder(&env)?
 		.with_optimization_level(GraphOptimizationLevel::Level3)?
 		.commit_from_url("https://cdn.pyke.io/0/pyke:ort-rs/example-models@0.0.0/mnist.onnx")
 		.expect("Could not download model from file");

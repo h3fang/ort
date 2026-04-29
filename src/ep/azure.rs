@@ -37,7 +37,8 @@ use crate::{error::Result, session::builder::SessionBuilder};
 /// ```no_run
 /// # use ort::{ep, session::Session, value::Tensor};
 /// # fn main() -> ort::Result<()> {
-/// let mut session = Session::builder()?
+/// # let env = ort::Environment::builder().build()?;
+/// let mut session = Session::builder(&env)?
 /// 	// note: session must be initialized with `onnxruntime-extensions`
 /// 	.with_extensions()?
 /// 	.with_execution_providers([ep::Azure::default().build()])?

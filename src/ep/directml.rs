@@ -39,7 +39,8 @@ pub enum DeviceFilter {
 /// ```no_run
 /// # use ort::{ep, session::Session};
 /// # fn main() -> ort::Result<()> {
-/// let session = Session::builder()?
+/// # let env = ort::Environment::builder().build()?;
+/// let session = Session::builder(&env)?
 /// 	.with_execution_providers([ep::DirectML::default().build()])?
 /// 	.with_dimension_override("batch", 1)?
 /// 	.with_dimension_override("seq_len", 512)?
