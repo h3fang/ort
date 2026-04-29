@@ -18,9 +18,10 @@ use crate::{
 /// This type allows session outputs to be retrieved by index or by name.
 ///
 /// ```
-/// # use ort::{value::TensorRef, session::{builder::GraphOptimizationLevel, Session}};
+/// # use ort::{environment::Environment, value::TensorRef, session::{builder::GraphOptimizationLevel, Session}};
 /// # fn main() -> ort::Result<()> {
-/// let mut session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+/// # let env = Environment::builder().build()?;
+/// let mut session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 /// let input = ndarray::Array4::<f32>::zeros((1, 64, 64, 3));
 /// let outputs = session.run(ort::inputs![TensorRef::from_array_view(&input)?])?;
 ///

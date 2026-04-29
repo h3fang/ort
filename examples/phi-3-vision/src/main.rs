@@ -222,13 +222,13 @@ async fn main() -> Result<()> {
 		.init();
 
 	// Register EPs based on feature flags - this isn't crucial for usage and can be removed.
-	common::init()?;
+	let env = common::init()?;
 
 	let data_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
 	let tokenizer = Tokenizer::from_file(data_dir.join("tokenizer.json")).map_err(|e| anyhow::anyhow!("Error loading tokenizer: {:?}", e))?;
-	let mut vision_model = Session::builder()?.commit_from_file(data_dir.join(VISION_MODEL_NAME))?;
-	let mut text_embedding_model = Session::builder()?.commit_from_file(data_dir.join(TEXT_EMBEDDING_MODEL_NAME))?;
-	let mut generation_model = Session::builder()?.commit_from_file(data_dir.join(GENERATION_MODEL_NAME))?;
+	let mut vision_model = Session::builder(&env)?.commit_from_file(data_dir.join(VISION_MODEL_NAME))?;
+	let mut text_embedding_model = Session::builder(&env)?.commit_from_file(data_dir.join(TEXT_EMBEDDING_MODEL_NAME))?;
+	let mut generation_model = Session::builder(&env)?.commit_from_file(data_dir.join(GENERATION_MODEL_NAME))?;
 
 	// Generate text from text
 	let image: Option<DynamicImage> = None;

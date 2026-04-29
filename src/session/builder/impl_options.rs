@@ -301,11 +301,12 @@ impl SessionBuilder {
 	/// handler ([`tracing`] if the `tracing` feature is enabled, otherwise ONNX Runtime's stdio logger).
 	///
 	/// ```
-	/// # use ort::{session::Session};
+	/// # use ort::{environment::Environment, session::Session};
 	/// # fn main() -> ort::Result<()> {
 	/// use std::sync::Arc;
 	///
-	/// let mut session = Session::builder()?
+	/// let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?
 	/// 	.with_logger(Arc::new(
 	/// 		|level: ort::logging::LogLevel, category: &str, id: &str, code_location: &str, message: &str| {
 	/// 			// ...
@@ -353,9 +354,10 @@ impl SessionBuilder {
 	/// For finer control over device selection, and to configure EP options, see [`SessionBuilder::with_devices`].
 	///
 	/// ```no_run
-	/// # use ort::session::{Session, builder::AutoDevicePolicy};
+	/// # use ort::{environment::Environment, session::{Session, builder::AutoDevicePolicy}};
 	/// # fn main() -> ort::Result<()> {
-	/// let mut session = Session::builder()?
+	/// # let env = Environment::builder().build()?;
+	/// let mut session = Session::builder(&env)?
 	/// 	// moar power!!1!
 	/// 	.with_auto_device(AutoDevicePolicy::MaxPerformance)?
 	/// 	.commit_from_file("tests/data/upsample.onnx")?;
@@ -380,13 +382,13 @@ impl SessionBuilder {
 	/// ```
 	/// # use ort::{environment::Environment, session::Session, memory::DeviceType};
 	/// # fn main() -> ort::Result<()> {
-	/// let env = Environment::current()?;
+	/// let env = Environment::builder().build()?;
 	///
 	/// let options = vec![
 	/// 	("CPUExecutionProvider.use_arena".to_string(), "1".to_string()),
 	/// 	("XnnpackExecutionProvider.num_threads".to_string(), "4".to_string()),
 	/// ];
-	/// let mut session = Session::builder()?
+	/// let mut session = Session::builder(&env)?
 	/// 	.with_devices(env.devices().filter(|dev| dev.ty() == DeviceType::CPU), Some(&options))?
 	/// 	.commit_from_file("tests/data/upsample.onnx")?;
 	/// # 	Ok(())

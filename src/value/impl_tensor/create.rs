@@ -94,8 +94,10 @@ impl<T: PrimitiveTensorElementType + Debug> Tensor<T> {
 	/// (CPU) memory for use with CUDA:
 	/// ```no_run
 	/// # use ort::{memory::{Allocator, MemoryInfo, MemoryType, AllocationDevice, AllocatorType}, session::Session, value::Tensor};
+	/// # use ort::environment::Environment;
 	/// # fn main() -> ort::Result<()> {
-	/// # let session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// # let session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let allocator = Allocator::new(
 	/// 	&session,
 	/// 	MemoryInfo::new(AllocationDevice::CUDA_PINNED, 0, AllocatorType::Device, MemoryType::CPUInput)?

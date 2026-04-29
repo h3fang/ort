@@ -3,10 +3,11 @@
 //! Sessions can be configured with execution providers via [`SessionBuilder::with_execution_providers`]:
 //!
 //! ```no_run
-//! use ort::{ep, session::Session};
+//! use ort::{environment::Environment, ep, session::Session};
 //!
 //! fn main() -> ort::Result<()> {
-//! 	let session = Session::builder()?
+//! 	let env = Environment::builder().build()?;
+//! 	let session = Session::builder(&env)?
 //! 		.with_execution_providers([ep::CUDA::default().build()])?
 //! 		.commit_from_file("model.onnx")?;
 //!

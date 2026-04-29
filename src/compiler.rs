@@ -21,8 +21,10 @@
 //! ```no_run
 //! # use std::path::PathBuf;
 //! # use ort::{compiler::ModelCompiler, session::Session, ep};
+//! # use ort::environment::Environment;
 //! # fn main() -> ort::Result<()> {
-//! let mut session_options = Session::builder()?.with_execution_providers([ep::CoreML::default()
+//! # let env = Environment::builder().build()?;
+//! let mut session_options = Session::builder(&env)?.with_execution_providers([ep::CoreML::default()
 //! 	.with_model_format(ep::coreml::ModelFormat::MLProgram)
 //! 	.build()])?;
 //!
@@ -240,12 +242,13 @@ mod tests {
 
 	#[test]
 	fn test_compile_in_memory() -> crate::Result<()> {
-		let compiled_model = ModelCompiler::new(SessionBuilder::new()?)?
+		let env = crate::Environment::builder().build()?;
+		let compiled_model = ModelCompiler::new(SessionBuilder::new(env.clone())?)?
 			.with_embed_ep_context()?
 			.with_model_from_file("tests/data/upsample.onnx")?
 			.compile_to_buffer()?;
 
-		let _model = SessionBuilder::new()?.commit_from_memory(&compiled_model)?;
+		let _model = SessionBuilder::new(env)?.commit_from_memory(&compiled_model)?;
 
 		Ok(())
 	}

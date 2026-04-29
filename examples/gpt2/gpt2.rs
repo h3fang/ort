@@ -31,13 +31,13 @@ fn main() -> ort::Result<()> {
 		.init();
 
 	// Register EPs based on feature flags - this isn't crucial for usage and can be removed.
-	common::init()?;
+	let env = common::init()?;
 
 	let mut stdout: io::Stdout = io::stdout();
 	let mut rng = rand::rng();
 
 	// Load our model
-	let mut session = Session::builder()?
+	let mut session = Session::builder(&env)?
 		.with_optimization_level(GraphOptimizationLevel::Level1)?
 		.with_intra_threads(1)?
 		.commit_from_url("https://cdn.pyke.io/0/pyke:ort-rs/example-models@0.0.0/gpt2.onnx")?;

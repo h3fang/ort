@@ -1,15 +1,16 @@
-//! The [`Environment`] is a process-global configuration under which [`Session`](crate::session::Session)s are created.
+//! The [`Environment`] is an explicit configuration object under which [`Session`](crate::session::Session)s are
+//! created.
 //!
 //! With it, you can configure [default execution providers], enable/disable [telemetry], share a [global thread pool]
 //! across all sessions, or add a [custom logger].
 //!
-//! Environments can be set up via [`ort::init`](init):
+//! Environments are created via [`Environment::builder`]:
 //! ```
-//! # use ort::ep;
+//! # use ort::{environment::Environment, ep};
 //! # fn main() -> ort::Result<()> {
-//! ort::init().with_execution_providers([ep::CUDA::default().build()]).commit();
+//! let env = Environment::builder().with_execution_providers([ep::CUDA::default().build()]).build()?;
 //!
-//! // ... do other ort things now that our environment is set up...
+//! // ... create sessions with `env` ...
 //! # Ok(())
 //! # }
 //! ```
@@ -18,20 +19,18 @@
 //! [`ort::init_from`](init_from):
 //!
 //! ```ignore
-//! # use ort::ep;
+//! # use ort::{environment::Environment, ep};
 //! # fn main() -> ort::Result<()> {
 //! let lib_path = std::env::current_exe().unwrap().parent().unwrap().join("lib");
-//! ort::init_from(lib_path.join("onnxruntime.dll"))?
-//! 	.with_execution_providers([ep::CUDA::default().build()])
-//! 	.commit();
+//! let env = ort::init_from(lib_path.join("onnxruntime.dll"))?
+//!     .with_execution_providers([ep::CUDA::default().build()])
+//!     .build()?;
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! If you don't configure an environment, one will be created with default settings at the first creation of a session.
-//! The environment can't be re-configured after one is committed, so it's important `ort::init` come before any other
-//! `ort` API for the config to take effect. Authors of libraries using `ort` should **never** have the library
-//! configure the environment itself; allow the application developer to do that themselves if they wish.
+//! The environment must outlive all sessions created from it. When the `Arc<Environment>` reference count drops to
+//! zero, the underlying ONNX Runtime environment is released.
 //!
 //! [default execution providers]: EnvironmentBuilder::with_execution_providers
 //! [telemetry]: EnvironmentBuilder::with_telemetry
@@ -59,61 +58,13 @@ use crate::{
 	error::Result,
 	logging::{LogLevel, LoggerFunction},
 	ortsys,
-	util::{Mutex, OnceLock, STACK_EXECUTION_PROVIDERS, run_on_drop, with_cstr}
+	util::{STACK_EXECUTION_PROVIDERS, with_cstr}
 };
 
-static G_ENV: Mutex<Option<Arc<Environment>>> = Mutex::new(None);
-
-// Rust doesn't run destructors for statics, but ONNX Runtime is *very* particular about `ReleaseEnv` being called
-// before any C++ destructors are called. In order to drop the environment, we have to release the reference held in
-// `G_ENV` at the end of the program, but before C++ destructors are called. On Linux & Windows (surprisingly), this is
-// fairly simple: just put it in a custom linker section.
-//
-// `G_ENV` used to be `Mutex<Weak<Environment>>`, which was much nicer, but apparently you can only ever call
-// `CreateEnv` once throughout the lifetime of the process, *even if* the last env was `ReleaseEnv`'d. So once all
-// `Session`s fell out of scope, if you ever tried to create another one, you'd crash. Grand.
-#[cfg_attr(any(target_os = "linux", target_os = "android"), unsafe(link_section = ".text.exit"))]
-unsafe extern "C" fn release_env_on_exit(#[cfg(target_vendor = "apple")] _: *const ()) {
-	G_ENV.lock().take();
-}
-
-#[used]
-#[cfg(all(not(windows), not(target_vendor = "apple"), not(target_arch = "wasm32")))]
-#[unsafe(link_section = ".fini_array")]
-static _ON_EXIT: unsafe extern "C" fn() = release_env_on_exit;
-#[used]
-#[cfg(windows)]
-#[unsafe(link_section = ".CRT$XLB")]
-static _ON_EXIT: unsafe extern "system" fn(module: *mut (), reason: u32, reserved: *mut ()) = {
-	unsafe extern "system" fn on_exit(_h: *mut (), reason: u32, _pv: *mut ()) {
-		// XLB gets called on both init & exit (?). Also, XLA never gets called, and no one online ever mentions that.
-		// Only do destructor things if we're actually exiting the process (DLL_PROCESS_EXIT = 0)
-		if reason == 0 {
-			unsafe { release_env_on_exit() };
-		}
-	}
-	on_exit
-};
-
-// macOS used to have the __mod_term_func section which worked similar to `.fini_array`, but one day they just decided
-// to remove it I guess? So we have to set an atexit handler instead. But normal atexit doesn't work, we need to use
-// __cxa_atexit. And if you register it too early in the program (i.e. in __mod_init_func), it'll fire *after* C++
-// destructors. So we call this after we create the environment instead. This shit took years off my life.
-#[cfg(target_vendor = "apple")]
-fn register_atexit() {
-	unsafe extern "C" {
-		static __dso_handle: *const ();
-		fn __cxa_atexit(cb: unsafe extern "C" fn(_: *const ()), arg: *const (), dso_handle: *const ());
-	}
-	unsafe { __cxa_atexit(release_env_on_exit, core::ptr::null(), __dso_handle) };
-}
-
-static G_ENV_OPTIONS: OnceLock<EnvironmentBuilder> = OnceLock::new();
-
-/// Holds shared global configuration for all [`Session`](crate::session::Session)s in the process.
+/// Holds shared configuration for all [`Session`](crate::session::Session)s created from it.
 ///
 /// See the [module-level documentation][self] for more information on environments. To create an environment, see
-/// [`ort::init`](init) & [`ort::init_from`](init_from).
+/// [`Environment::builder`].
 pub struct Environment {
 	execution_providers: SmallVec<[ExecutionProviderDispatch; STACK_EXECUTION_PROVIDERS]>,
 	ptr: NonNull<ort_sys::OrtEnv>,
@@ -126,12 +77,18 @@ unsafe impl Send for Environment {}
 unsafe impl Sync for Environment {}
 
 impl Environment {
-	/// Returns a handle to the currently active `Environment`. If one has not yet been [committed][commit] (or an old
-	/// environment has fallen out of usage), a new environment will be created & committed.
+	/// Returns a new [`EnvironmentBuilder`] used to configure and create an environment.
 	///
-	/// [commit]: EnvironmentBuilder::commit
-	pub fn current() -> Result<Arc<Environment>> {
-		self::current()
+	/// ```
+	/// # use ort::environment::Environment;
+	/// # fn main() -> ort::Result<()> {
+	/// let env = Environment::builder().with_name("my_app").build()?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	#[must_use = "build() must be called to create the environment"]
+	pub fn builder() -> EnvironmentBuilder {
+		EnvironmentBuilder::new()
 	}
 
 	/// Sets the global log level.
@@ -139,15 +96,13 @@ impl Environment {
 	/// ```
 	/// # use ort::{environment::Environment, logging::LogLevel};
 	/// # fn main() -> ort::Result<()> {
-	/// let env = Environment::current()?;
+	/// let env = Environment::builder().build()?;
 	///
 	/// env.set_log_level(LogLevel::Warning);
 	/// # Ok(())
 	/// # }
 	/// ```
 	pub fn set_log_level(&self, level: LogLevel) {
-		// technically this method should take `&mut self`, but it isn't enough of an issue to warrant putting
-		// environments behind a mutex and the performance hit that comes with that
 		ortsys![unsafe UpdateEnvWithCustomLogLevel(self.ptr().cast_mut(), level.into()).expect("infallible")];
 	}
 
@@ -168,7 +123,7 @@ impl Environment {
 	/// ```
 	/// # use ort::environment::Environment;
 	/// # fn main() -> ort::Result<()> {
-	/// let env = Environment::current()?;
+	/// let env = Environment::builder().build()?;
 	///
 	/// let _ = env.register_ep_library("CUDA", "/path/to/onnxruntime_providers_cuda.dll");
 	/// # Ok(())
@@ -191,7 +146,7 @@ impl Environment {
 	/// ```
 	/// # use ort::environment::Environment;
 	/// # fn main() -> ort::Result<()> {
-	/// let env = Environment::current()?;
+	/// let env = Environment::builder().build()?;
 	/// for device in env.devices() {
 	/// 	println!(
 	/// 		"{id} ({vendor} {ty:?} - {ep})",
@@ -209,7 +164,6 @@ impl Environment {
 	pub fn devices(&self) -> impl DoubleEndedIterator<Item = crate::device::Device<'_>> + '_ {
 		let mut ptrs = ptr::dangling();
 		let mut len = 0;
-		// returns an error in minimal build because its unsupported. ignore & return empty iterator in that case
 		let _ = ortsys![@ort: unsafe GetEpDevices(self.ptr().cast_mut(), &mut ptrs, &mut len) as Result];
 		unsafe { core::slice::from_raw_parts(ptrs, len) }
 			.iter()
@@ -242,24 +196,6 @@ impl Drop for Environment {
 		ortsys![unsafe ReleaseEnv(self.ptr_mut())];
 		crate::logging::drop!(Environment, self.ptr());
 	}
-}
-
-/// Returns a handle to the currently active `Environment`. If one has not yet been committed (or an old environment
-/// has fallen out of usage), a new environment will be created & committed.
-pub fn current() -> Result<Arc<Environment>> {
-	let mut env_lock = G_ENV.lock();
-	if let Some(env) = env_lock.as_ref() {
-		return Ok(env.clone());
-	}
-
-	let options = G_ENV_OPTIONS.get_or_init(EnvironmentBuilder::new);
-	let env = options.create_environment().map(Arc::new)?;
-	*env_lock = Some(Arc::clone(&env));
-
-	#[cfg(target_vendor = "apple")]
-	register_atexit();
-
-	Ok(env)
 }
 
 #[derive(Debug)]
@@ -453,7 +389,7 @@ pub(crate) unsafe extern "system" fn thread_join<T: ThreadManager + Any>(ort_cus
 	}
 }
 
-/// Struct used to build an [`Environment`]; see [`crate::init`].
+/// Struct used to build an [`Environment`]; see [`Environment::builder`].
 pub struct EnvironmentBuilder {
 	name: String,
 	telemetry: bool,
@@ -474,7 +410,7 @@ impl EnvironmentBuilder {
 	}
 
 	/// Configure the environment with a given name for logging purposes.
-	#[must_use = "commit() must be called in order for the environment to take effect"]
+	#[must_use = "build() must be called to create the environment"]
 	pub fn with_name<S>(mut self, name: S) -> Self
 	where
 		S: Into<String>
@@ -501,7 +437,7 @@ impl EnvironmentBuilder {
 	/// More details can be found in the `_telemetry.js` file in the root of the `ort-web` crate.
 	///
 	/// [etw]: https://github.com/microsoft/onnxruntime/blob/v1.24.4/onnxruntime/core/platform/windows/telemetry.cc
-	#[must_use = "commit() must be called in order for the environment to take effect"]
+	#[must_use = "build() must be called to create the environment"]
 	pub fn with_telemetry(mut self, enable: bool) -> Self {
 		self.telemetry = enable;
 		self
@@ -517,14 +453,14 @@ impl EnvironmentBuilder {
 	/// feature enabled will emit a warning.
 	///
 	/// [`SessionBuilder::with_execution_providers`]: crate::session::builder::SessionBuilder::with_execution_providers
-	#[must_use = "commit() must be called in order for the environment to take effect"]
+	#[must_use = "build() must be called to create the environment"]
 	pub fn with_execution_providers(mut self, execution_providers: impl AsRef<[ExecutionProviderDispatch]>) -> Self {
 		self.execution_providers = execution_providers.as_ref().into();
 		self
 	}
 
 	/// Enables the global thread pool for this environment.
-	#[must_use = "commit() must be called in order for the environment to take effect"]
+	#[must_use = "build() must be called to create the environment"]
 	pub fn with_global_thread_pool(mut self, options: GlobalThreadPoolOptions) -> Self {
 		self.global_thread_pool_options = Some(options);
 		self
@@ -536,22 +472,23 @@ impl EnvironmentBuilder {
 	/// # fn main() -> ort::Result<()> {
 	/// use std::sync::Arc;
 	///
-	/// ort::init()
+	/// let _env = ort::Environment::builder()
 	/// 	.with_logger(Arc::new(
 	/// 		|level: ort::logging::LogLevel, category: &str, id: &str, code_location: &str, message: &str| {
 	/// 			// ...
 	/// 		}
 	/// 	))
-	/// 	.commit();
+	/// 	.build()?;
 	/// # 	Ok(())
 	/// # }
 	/// ```
+	#[must_use = "build() must be called to create the environment"]
 	pub fn with_logger(mut self, logger: LoggerFunction) -> Self {
 		self.logger = Some(logger);
 		self
 	}
 
-	pub(crate) fn create_environment(&self) -> Result<Environment> {
+	fn create_environment(&self) -> Result<Environment> {
 		let logger = self
 			.logger
 			.as_ref()
@@ -615,7 +552,7 @@ impl EnvironmentBuilder {
 			}
 		})?;
 
-		let _guard = run_on_drop(|| ortsys![unsafe ReleaseEnv(env_ptr.as_ptr())]);
+		let _guard = crate::util::run_on_drop(|| ortsys![unsafe ReleaseEnv(env_ptr.as_ptr())]);
 
 		if self.telemetry {
 			ortsys![unsafe EnableTelemetryEvents(env_ptr.as_ptr())?];
@@ -638,39 +575,43 @@ impl EnvironmentBuilder {
 		})
 	}
 
-	/// Commit the environment configuration.
+	/// Build the environment with the configured options.
 	///
-	/// Returns `true` if the environment configuration was successfully committed; returns `false` if an environment
-	/// has already been configured, indicating this config will not take effect.
-	pub fn commit(self) -> bool {
-		G_ENV_OPTIONS.try_insert_with(|| self)
+	/// Returns an `Arc<Environment>` which must be kept alive for the lifetime of all sessions created from it.
+	///
+	/// ```
+	/// # use ort::ep;
+	/// # fn main() -> ort::Result<()> {
+	/// let env = ort::Environment::builder()
+	/// 	.with_execution_providers([ep::CUDA::default().build()])
+	/// 	.build()?;
+	///
+	/// // pass `&env` to Session::builder(&env) to create sessions
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn build(self) -> Result<Arc<Environment>> {
+		self.create_environment().map(Arc::new)
 	}
 }
 
-/// Creates an ONNX Runtime environment.
+/// Creates an [`EnvironmentBuilder`] used to configure and build an ONNX Runtime environment.
 ///
 /// ```
 /// # use ort::ep;
 /// # fn main() -> ort::Result<()> {
-/// ort::init().with_execution_providers([ep::CUDA::default().build()]).commit();
+/// let env = ort::init().with_execution_providers([ep::CUDA::default().build()]).build()?;
 /// # Ok(())
 /// # }
 /// ```
 ///
-/// # Notes
-/// - It is not required to call this function. If this is not called by the time any other `ort` APIs are used, a
-///   default environment will be created.
-/// - **Library crates that use `ort` shouldn't create their own environment.** Let downstream applications create it.
-/// - In order for environment settings to apply, this must be called **before** you use other APIs like [`Session`],
-///   and you *must* call `.commit()` on the builder returned by this function.
-///
 /// [`Session`]: crate::session::Session
-#[must_use = "commit() must be called in order for the environment to take effect"]
+#[must_use = "build() must be called to create the environment"]
 pub fn init() -> EnvironmentBuilder {
 	EnvironmentBuilder::new()
 }
 
-/// Creates an ONNX Runtime environment, dynamically loading ONNX Runtime from the library file (`.dll`/`.so`/`.dylib`)
+/// Creates an [`EnvironmentBuilder`], dynamically loading ONNX Runtime from the library file (`.dll`/`.so`/`.dylib`)
 /// specified by `path`. Returns an error if the dylib fails to load.
 ///
 /// This must be called before any other `ort` APIs are used in order for the correct dynamic library to be loaded.
@@ -679,21 +620,17 @@ pub fn init() -> EnvironmentBuilder {
 /// # use ort::ep;
 /// # fn main() -> Result<(), ort::LoadDynamicError> {
 /// let lib_path = std::env::current_exe().unwrap().parent().unwrap().join("lib");
-/// ort::init_from(lib_path.join("onnxruntime.dll"))?
+/// let env = ort::init_from(lib_path.join("onnxruntime.dll"))?
 /// 	.with_execution_providers([ep::CUDA::default().build()])
-/// 	.commit();
+/// 	.build()?;
 /// # Ok(())
 /// # }
 /// ```
 ///
-/// # Notes
-/// - In order for environment settings to apply, this must be called **before** you use other APIs like [`Session`],
-///   and you *must* call `.commit()` on the builder returned by this function.
-///
 /// [`Session`]: crate::session::Session
 #[cfg(all(feature = "load-dynamic", not(target_arch = "wasm32")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "load-dynamic")))]
-#[must_use = "commit() must be called in order for the environment to take effect"]
+#[must_use = "build() must be called to create the environment"]
 pub fn init_from<P: AsRef<std::path::Path>>(path: P) -> Result<EnvironmentBuilder, crate::LoadDynamicError> {
 	crate::load_dynamic::init(path.as_ref())?;
 	Ok(EnvironmentBuilder::new())

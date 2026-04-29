@@ -92,8 +92,10 @@ impl DynTensor {
 	/// (CPU) memory for use with CUDA:
 	/// ```no_run
 	/// # use ort::{memory::{Allocator, MemoryInfo, MemoryType, AllocationDevice, AllocatorType}, session::Session, value::{DynTensor, TensorElementType}};
+	/// # use ort::environment::Environment;
 	/// # fn main() -> ort::Result<()> {
-	/// # let session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// # let session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let allocator = Allocator::new(
 	/// 	&session,
 	/// 	MemoryInfo::new(AllocationDevice::CUDA_PINNED, 0, AllocatorType::Device, MemoryType::CPUInput)?
@@ -209,13 +211,15 @@ impl<Type: TensorValueTypeMarker + ?Sized> Value<Type> {
 	///
 	/// ```
 	/// # use ort::{memory::{Allocator, AllocatorType, AllocationDevice, MemoryInfo, MemoryType}, session::Session, value::Tensor};
+	/// # use ort::environment::Environment;
 	/// # fn main() -> ort::Result<()> {
 	/// let tensor = Tensor::<f32>::new(&Allocator::default(), [1_usize, 3, 224, 224])?;
 	/// // Tensors are allocated on CPU by default.
 	/// assert_eq!(tensor.memory_info().allocation_device(), AllocationDevice::CPU);
 	///
 	/// # if false {
-	/// # let session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// # let session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let cuda_allocator = Allocator::new(
 	/// 	&session,
 	/// 	MemoryInfo::new(AllocationDevice::CUDA, 0, AllocatorType::Device, MemoryType::Default)?

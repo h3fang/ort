@@ -1,11 +1,13 @@
 //! ONNX Runtime doesn't (currently) expose an API for inter-device copies, so we instead use a dummy model to copy the
 //! tensor & `IoBinding` to configure where the copy ends up.
 
-use alloc::{format, string::ToString};
+use alloc::{format, string::ToString, sync::Arc};
 use core::ops::{Deref, DerefMut};
 
 use crate::{
-	Error, OnceLock, Result, ep,
+	Error, OnceLock, Result,
+	environment::Environment,
+	ep,
 	memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType},
 	session::{IoBinding, NoSelectedOutputs, RunOptions, Session, builder::GraphOptimizationLevel},
 	util::{MiniMap, Mutex, MutexGuard},
@@ -29,6 +31,7 @@ struct IdentitySession {
 /// A simple graph in `.ort` format with a single `Identity` node between the input & output.
 static IDENTITY_MODEL: &[u8] = include_bytes!("./identity.ort");
 static SESSIONS: OnceLock<Mutex<MiniMap<IdentitySessionKey, IdentitySession>>> = OnceLock::new();
+static IDENTITY_ENV: OnceLock<Arc<Environment>> = OnceLock::new();
 /// `RunOptions` with [`RunOptions::disable_device_sync`], shared across `to_async()` calls to reduce allocations.
 static IDENTITY_RUN_OPTIONS: OnceLock<RunOptions<NoSelectedOutputs>> = OnceLock::new();
 
@@ -69,10 +72,11 @@ impl<Type: TensorValueTypeMarker + ?Sized> Value<Type> {
 	/// Copies the contents of this tensor to another device, returning the newly created tensor value.
 	///
 	/// ```
-	/// # use ort::{memory::{Allocator, AllocatorType, AllocationDevice, MemoryInfo, MemoryType}, session::Session, value::Tensor};
+	/// # use ort::{environment::Environment, memory::{Allocator, AllocatorType, AllocationDevice, MemoryInfo, MemoryType}, session::Session, value::Tensor};
 	/// # fn main() -> ort::Result<()> {
 	/// # if false {
-	/// # let session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// # let session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let cuda_allocator = Allocator::new(
 	/// 	&session,
 	/// 	MemoryInfo::new(AllocationDevice::CUDA, 0, AllocatorType::Device, MemoryType::Default)?
@@ -141,10 +145,11 @@ impl<Type: TensorValueTypeMarker + ?Sized> Value<Type> {
 	/// Copies the contents of this tensor to another tensor potentially residing on a separate device.
 	///
 	/// ```
-	/// # use ort::{memory::{Allocator, AllocatorType, AllocationDevice, MemoryInfo, MemoryType}, session::Session, value::Tensor};
+	/// # use ort::{environment::Environment, memory::{Allocator, AllocatorType, AllocationDevice, MemoryInfo, MemoryType}, session::Session, value::Tensor};
 	/// # fn main() -> ort::Result<()> {
 	/// # if false {
-	/// # let session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// # let session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let cuda_allocator = Allocator::new(
 	/// 	&session,
 	/// 	MemoryInfo::new(AllocationDevice::CUDA, 0, AllocatorType::Device, MemoryType::Default)?
@@ -180,11 +185,12 @@ impl<Type: TensorValueTypeMarker + ?Sized> Value<Type> {
 	/// (like via `cudaStreamSynchronize`); thus this function is most useful for host-to-device transfers.
 	///
 	/// ```
-	/// # use ort::{memory::{Allocator, AllocatorType, AllocationDevice, MemoryInfo, MemoryType}, session::Session, value::Tensor};
+	/// # use ort::{environment::Environment, memory::{Allocator, AllocatorType, AllocationDevice, MemoryInfo, MemoryType}, session::Session, value::Tensor};
 	/// # fn main() -> ort::Result<()> {
 	/// let cpu_tensor = Tensor::<f32>::new(&Allocator::default(), [1_usize, 3, 224, 224])?;;
 	/// # if false {
-	/// # let session = Session::builder()?.commit_from_file("tests/data/upsample.onnx")?;
+	/// # let env = Environment::builder().build()?;
+	/// # let session = Session::builder(&env)?.commit_from_file("tests/data/upsample.onnx")?;
 	/// let cuda_allocator = Allocator::new(
 	/// 	&session,
 	/// 	MemoryInfo::new(AllocationDevice::CUDA, 0, AllocatorType::Device, MemoryType::Default)?
@@ -297,7 +303,13 @@ impl IdentitySessionHandle {
 					ep_for_device(target_device, target_device_id)?.error_on_failure()
 				);
 
-				let mut builder = Session::builder()?
+				let env = IDENTITY_ENV.get_or_init(|| {
+					Environment::builder()
+						.build()
+						.expect("failed to create environment for identity sessions")
+				});
+
+				let mut builder = Session::builder(env)?
 					.with_optimization_level(GraphOptimizationLevel::Level3)?
 					// since these sessions are persistent for the lifetime of the program, keep them as lean as possible
 					// by disabling threading & memory optimizations (there's only 1 operation in the graph anyway)
@@ -414,12 +426,14 @@ mod tests {
 	#[cfg(feature = "cuda")]
 	fn test_copy_into_cuda() -> crate::Result<()> {
 		use crate::{
+			environment::Environment,
 			ep,
 			memory::{AllocatorType, MemoryInfo, MemoryType},
 			session::Session
 		};
 
-		let dummy_session = Session::builder()?
+		let env = Environment::builder().build()?;
+		let dummy_session = Session::builder(&env)?
 			.with_execution_providers([ep::CUDA::default().build()])?
 			.commit_from_file("tests/data/upsample.ort")?;
 
@@ -438,12 +452,14 @@ mod tests {
 	#[cfg(feature = "cuda")]
 	fn test_copy_into_async_cuda() -> crate::Result<()> {
 		use crate::{
+			environment::Environment,
 			ep,
 			memory::{AllocatorType, MemoryInfo, MemoryType},
 			session::Session
 		};
 
-		let dummy_session = Session::builder()?
+		let env = Environment::builder().build()?;
+		let dummy_session = Session::builder(&env)?
 			.with_execution_providers([ep::CUDA::default().build()])?
 			.commit_from_file("tests/data/upsample.ort")?;
 

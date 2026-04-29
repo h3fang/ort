@@ -53,10 +53,10 @@ fn main() -> ort::Result<()> {
 		.init();
 
 	// Register EPs based on feature flags - this isn't crucial for usage and can be removed.
-	common::init()?;
+	let env = common::init()?;
 
 	let trainer = Trainer::new_from_artifacts(
-		SessionBuilder::new()?.with_execution_providers([ep::CUDA::default().build()])?,
+		SessionBuilder::new(&env)?.with_execution_providers([ep::CUDA::default().build()])?,
 		Allocator::default(),
 		"tools/train-data/mini-clm",
 		None
@@ -121,7 +121,7 @@ fn main() -> ort::Result<()> {
 
 	trainer.export("trained-clm.onnx", ["probs"])?;
 
-	let mut session = Session::builder()?.commit_from_file("trained-clm.onnx")?;
+	let mut session = Session::builder(&env)?.commit_from_file("trained-clm.onnx")?;
 
 	let mut stdout = std::io::stdout();
 

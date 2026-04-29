@@ -33,10 +33,10 @@ async fn main() -> anyhow::Result<()> {
 		.init();
 
 	// Register EPs based on feature flags - this isn't crucial for usage and can be removed.
-	common::init()?;
+	let env = common::init()?;
 
 	// Load our model
-	let session = Session::builder()?
+	let session = Session::builder(&env)?
 		.with_optimization_level(GraphOptimizationLevel::Level1)?
 		.with_intra_threads(4)?
 		.commit_from_url("https://cdn.pyke.io/0/pyke:ort-rs/example-models@0.0.0/gpt2.onnx")?;
